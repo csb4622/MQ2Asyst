@@ -20,14 +20,14 @@ function App.new(mq, ImGui)
   self.ImGui = ImGui
 
   self.state = State.new()
-  self.logger = Logger.new('[Asyst]')
+  self.logger = Logger.new('[Asyst]', mq.luaDir .. '/asyst.log')
 
   self._lastGameState = nil
 
   self.commandService = CommandService.new(mq, self.state, self.logger, self.engine)
   self.characterService = CharacterService.new(mq)
   self.pluginService = PluginService.new(mq, self.logger)
-  self.groupService = GroupService.new(mq)
+  self.groupService = GroupService.new(mq, self.logger)
   
   self.engine = AutomationEngine.new(mq, self.state, self.logger)
 
@@ -73,6 +73,7 @@ end
 
 function App:Shutdown()
   self.logger:Info('Shutdown')
+  self.logger:Close()
 end
 
 function App:DrawUI()
