@@ -34,9 +34,13 @@ end
 function AsystWindow:Draw(characterSnapshot)
   local ImGui = self.ImGui
 
+  -- Track if we pushed a style color
+  local pushedStyle = false
+
   -- Apply red background when paused
   if self.state.app.isPaused then
-    ImGui.PushStyleColor(ImGuiCol.WindowBg, ImVec4(0.3, 0.0, 0.0, 1.0))
+    ImGui.PushStyleColor(ImGuiCol.WindowBg, 0.3, 0.0, 0.0, 1.0)
+    pushedStyle = true
   end
 
   self.state.ui.isOpen, shouldDraw = ImGui.Begin('Asyst', self.state.ui.isOpen)
@@ -68,8 +72,8 @@ function AsystWindow:Draw(characterSnapshot)
   end
   ImGui.End()
 
-  -- Pop style color if paused
-  if self.state.app.isPaused then
+  -- Pop style color if we pushed it
+  if pushedStyle then
     ImGui.PopStyleColor()
   end
 end
