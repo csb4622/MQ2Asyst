@@ -5,6 +5,7 @@ local ModeItems = {
   { value = Modes.Manual, label = 'Manual' },
   { value = Modes.Chase,  label = 'Chase'  },
   { value = Modes.Camp,   label = 'Camp'   },
+  { value = Modes.Hunter, label = 'Hunter' },
 }
 
 
@@ -87,6 +88,9 @@ function GeneralTab:Draw()
       elseif opts.mode == Modes.Camp then
         -- hold position / return to camp (stub)
         -- Later: record camp location and use nav to return if displaced.
+      elseif opts.mode == Modes.Hunter then
+        -- Hunter mode: actively seek and engage targets (stub)
+        -- Later: target acquisition and engagement logic.
       end
     end
 

@@ -8,6 +8,7 @@ local SafetyService = require('asyst.services.SafetyService')
 local ManualBehavior = require('asyst.engine.behaviors.ManualBehavior')
 local ChaseBehavior  = require('asyst.engine.behaviors.ChaseBehavior')
 local CampBehavior   = require('asyst.engine.behaviors.CampBehavior')
+local HunterBehavior = require('asyst.engine.behaviors.HunterBehavior')
 
 local AutomationEngine = {}
 AutomationEngine.__index = AutomationEngine
@@ -23,6 +24,7 @@ function AutomationEngine.new(mq, state, logger)
     [Modes.Manual] = ManualBehavior.new(mq, state, logger),
     [Modes.Chase]  = ChaseBehavior.new(mq, state, logger),
     [Modes.Camp]   = CampBehavior.new(mq, state, logger),
+    [Modes.Hunter] = HunterBehavior.new(mq, state, logger),
   }
 
   self.safety = SafetyService.new(mq)
