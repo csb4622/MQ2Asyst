@@ -7,6 +7,7 @@ local ModeItems = {
   { value = Modes.Manual, label = 'Manual' },
   { value = Modes.Chase,  label = 'Chase'  },
   { value = Modes.Camp,   label = 'Camp'   },
+  { value = Modes.Hunter, label = 'Hunter' },
 }
 
 local GeneralTab = {}
