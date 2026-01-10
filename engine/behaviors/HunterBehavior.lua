@@ -27,6 +27,11 @@ end
 function HunterBehavior:GetGuards()
   local mq = self.mq
   local state = self.state
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[HunterBehavior] GetGuards() called')
+  end
 
   return {
     -- Crowd control / unable to act (Pause)
@@ -59,19 +64,40 @@ function HunterBehavior:GetGuards()
 end
 
 function HunterBehavior:Enter()
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[HunterBehavior] Enter() called - initializing hunter behavior')
+  end
+
   self._accum = 0
   self.logger:Info('Hunter mode active')
 end
 
 function HunterBehavior:Tick(dt)
+  local log = self.logger
+
   self._accum = self._accum + dt
   if self._accum < self._interval then return end
   self._accum = 0
 
+  if log and log.Debug then
+    log:Debug('[HunterBehavior] Tick() processing hunter logic')
+  end
+
   -- Hunter behavior execution will come later (target acquisition / engagement logic).
+  if log and log.Debug then
+    log:Debug('[HunterBehavior] Hunter logic placeholder - will be implemented')
+  end
 end
 
 function HunterBehavior:Exit()
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[HunterBehavior] Exit() called - exiting hunter behavior')
+  end
+
   -- Later: stop hunting / disengage
 end
 

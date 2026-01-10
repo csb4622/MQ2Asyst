@@ -46,23 +46,57 @@ end
 function CampBehavior:_setCampHere()
   local mq = self.mq
   local me = mq.TLO.Me
+  local log = self.logger
 
   self.state.camp.x = me.X()
   self.state.camp.y = me.Y()
   self.state.camp.z = me.Z()
   self.state.camp.zoneId = mq.TLO.Zone.ID()
+
+  if log and log.Debug then
+    log:Debug(string.format(
+      '[CampBehavior] Camp set at position: x=%.2f y=%.2f z=%.2f zoneId=%d',
+      self.state.camp.x, self.state.camp.y, self.state.camp.z, self.state.camp.zoneId
+    ))
+  end
 end
 
 function CampBehavior:_isCampInitialized()
   local c = self.state.camp
-  if not c then return false end
-  if (c.zoneId or 0) == 0 then return false end
+  local log = self.logger
+
+  if not c then
+    if log and log.Debug then
+      log:Debug('[CampBehavior] Camp not initialized: state.camp is nil')
+    end
+    return false
+  end
+
+  if (c.zoneId or 0) == 0 then
+    if log and log.Debug then
+      log:Debug('[CampBehavior] Camp not initialized: zoneId is 0')
+    end
+    return false
+  end
+
   -- If you want stricter, also require non-zero coords; but coords can be 0 in some zones.
+  if log and log.Debug then
+    log:Debug('[CampBehavior] Camp is initialized')
+  end
   return true
 end
 
 function CampBehavior:_ensureCampInitialized()
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[CampBehavior] _ensureCampInitialized() called')
+  end
+
   if not canReadPosition(self.mq) then
+    if log and log.Debug then
+      log:Debug('[CampBehavior] Cannot read position, camp initialization failed')
+    end
     return false
   end
 
@@ -70,6 +104,15 @@ function CampBehavior:_ensureCampInitialized()
 
   -- If camp not initialized yet OR zone changed, set/reset camp
   if (not self:_isCampInitialized()) or self.state.camp.zoneId ~= currentZone then
+    if log and log.Debug then
+      log:Debug(string.format(
+        '[CampBehavior] Camp needs initialization: initialized=%s currentZone=%d campZone=%d',
+        tostring(self:_isCampInitialized()),
+        currentZone,
+        (self.state.camp and self.state.camp.zoneId) or 0
+      ))
+    end
+
     self:_setCampHere()
     self.logger:Info('Camp set at current location')
   end
@@ -79,6 +122,11 @@ end
 
 function CampBehavior:GetGuards()
   local mq = self.mq
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[CampBehavior] GetGuards() called')
+  end
 
   return {
     -- Can't act guards (Pause) - same as Chase
@@ -110,31 +158,59 @@ function CampBehavior:GetGuards()
 end
 
 function CampBehavior:Enter()
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[CampBehavior] Enter() called - initializing camp behavior')
+  end
+
   self._accum = 0
 
   -- Attempt immediate camp set. If not possible, Stop guard will force Manual.
   -- If possible, this will initialize camp right away.
-  self:_ensureCampInitialized()
+  local initialized = self:_ensureCampInitialized()
+
+  if log and log.Debug then
+    log:Debug(string.format('[CampBehavior] Camp initialization result: %s', tostring(initialized)))
+  end
 
   self.logger:Info('Camp mode active')
 end
 
 function CampBehavior:Tick(dt)
+  local log = self.logger
+
   self._accum = self._accum + dt
   if self._accum < self._interval then return end
   self._accum = 0
+
+  if log and log.Debug then
+    log:Debug('[CampBehavior] Tick() processing camp enforcement')
+  end
 
   -- GUARANTEE camp is initialized before any enforcement logic runs
   if not self:_ensureCampInitialized() then
     -- This should not happen because the Stop guard should have kicked us out,
     -- but keep it defensive.
+    if log and log.Debug then
+      log:Debug('[CampBehavior] Tick() early exit: camp initialization failed')
+    end
     return
   end
 
   -- Camp enforcement (radius/nav) comes next
+  if log and log.Debug then
+    log:Debug('[CampBehavior] Camp enforcement placeholder - will be implemented')
+  end
 end
 
 function CampBehavior:Exit()
+  local log = self.logger
+
+  if log and log.Debug then
+    log:Debug('[CampBehavior] Exit() called - exiting camp behavior')
+  end
+
   -- Later: stop nav if needed
 end
 
