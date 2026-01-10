@@ -27,7 +27,7 @@ function AutomationEngine.new(mq, state, logger)
     [Modes.Hunter] = HunterBehavior.new(mq, state, logger),
   }
 
-  self.safety = SafetyService.new(mq)
+  self.safety = SafetyService.new(mq, logger)
   self._isPausedBySafety = false
 
   self._activeMode = nil
