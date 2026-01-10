@@ -9,6 +9,7 @@ function State.new()
 
   self.app = {
     isRunning = false,
+    isPaused = false,
   }
 
   self.ui = {
