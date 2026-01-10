@@ -37,7 +37,12 @@ function State.new()
       puller = nil,
       markNPC = nil,
     }
-}
+  }
+
+  self.camp = {
+    x = 0, y = 0, z = 0,
+    zoneId = 0,
+  }
 
   self.console = {
     lines = {},
