@@ -23,10 +23,10 @@ function GroupTab:Draw()
     end
 
     ImGui.Separator()
+    ImGui.Text('Roles:')
     ImGui.Text(('Main Tank: %s'):format(g.roles.mainTank or '(none)'))
     ImGui.Text(('Main Assist: %s'):format(g.roles.mainAssist or '(none)'))
     ImGui.Text(('Puller: %s'):format(g.roles.puller or '(none)'))
-    ImGui.Text(('Mark NPC: %s'):format(g.roles.markNPC or '(none)'))
 
     ImGui.EndTabItem()
   end
