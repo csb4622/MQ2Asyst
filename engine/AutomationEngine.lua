@@ -112,6 +112,11 @@ function AutomationEngine:Tick()
   local dt = now - self._lastTickClock
   self._lastTickClock = now
 
+  -- Check if manually paused
+  if self.state.app.isPaused then
+    return
+  end
+
   local safety = self.safety:Check()
   if not safety.ok then
     if not self._isPausedBySafety then

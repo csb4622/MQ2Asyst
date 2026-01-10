@@ -34,11 +34,28 @@ end
 function AsystWindow:Draw(characterSnapshot)
   local ImGui = self.ImGui
 
+  -- Apply red background when paused
+  if self.state.app.isPaused then
+    ImGui.PushStyleColor(ImGuiCol.WindowBg, ImVec4(0.3, 0.0, 0.0, 1.0))
+  end
+
   self.state.ui.isOpen, shouldDraw = ImGui.Begin('Asyst', self.state.ui.isOpen)
   if shouldDraw then
     -- Header
     local header = 'Asyst - ' .. (characterSnapshot.className or 'Unknown')
     ImGui.Text(header)
+    ImGui.Separator()
+
+    -- Pause/Resume button above tabs
+    local buttonText = self.state.app.isPaused and "Resume" or "Pause"
+    if ImGui.Button(buttonText) then
+      self.state.app.isPaused = not self.state.app.isPaused
+      if self.state.app.isPaused then
+        self.logger:Info('Plugin paused')
+      else
+        self.logger:Info('Plugin resumed')
+      end
+    end
     ImGui.Separator()
 
     -- Tabs
@@ -50,6 +67,11 @@ function AsystWindow:Draw(characterSnapshot)
     end
   end
   ImGui.End()
+
+  -- Pop style color if paused
+  if self.state.app.isPaused then
+    ImGui.PopStyleColor()
+  end
 end
 
 return AsystWindow

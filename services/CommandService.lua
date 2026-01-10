@@ -48,6 +48,16 @@ function CommandService.new(mq, state, logger, engine)
 
       self.logger:Debug('Requested mode: ' .. tostring(n))
     end,
+
+    pause = function()
+      self.state.app.isPaused = true
+      self.logger:Info('Plugin paused')
+    end,
+
+    resume = function()
+      self.state.app.isPaused = false
+      self.logger:Info('Plugin resumed')
+    end,
   }
 
   return self
@@ -76,7 +86,7 @@ end
 
 
 function CommandService:PrintHelp()
-  self.logger:Info('Usage: /asyst show|hide|toggle|mode <number>')
+  self.logger:Info('Usage: /asyst show|hide|toggle|mode <number>|pause|resume')
 end
 
 return CommandService
