@@ -25,7 +25,7 @@ function App.new(mq, ImGui)
   self._lastGameState = nil
 
   self.commandService = CommandService.new(mq, self.state, self.logger, self.engine)
-  self.characterService = CharacterService.new(mq)
+  self.characterService = CharacterService.new(mq, self.logger)
   self.pluginService = PluginService.new(mq, self.logger)
   self.groupService = GroupService.new(mq, self.logger)
   

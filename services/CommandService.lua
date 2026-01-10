@@ -23,15 +23,26 @@ function CommandService.new(mq, state, logger, engine)
 
   self._handlers = {
     show = function()
+      if self.logger and self.logger.Debug then
+        self.logger:Debug('[CommandService] Setting UI open=true')
+      end
       self.state.ui.isOpen = true
     end,
 
     hide = function()
+      if self.logger and self.logger.Debug then
+        self.logger:Debug('[CommandService] Setting UI open=false')
+      end
       self.state.ui.isOpen = false
     end,
 
     toggle = function()
-      self.state.ui.isOpen = not self.state.ui.isOpen
+      local newState = not self.state.ui.isOpen
+      if self.logger and self.logger.Debug then
+        self.logger:Debug(string.format('[CommandService] Toggling UI: %s -> %s',
+          tostring(self.state.ui.isOpen), tostring(newState)))
+      end
+      self.state.ui.isOpen = newState
     end,
 
     mode = function(args)
@@ -39,6 +50,11 @@ function CommandService.new(mq, state, logger, engine)
       if n == nil then
         self.logger:Warn('Usage: /asyst mode <number>')
         return
+      end
+
+      if self.logger and self.logger.Debug then
+        self.logger:Debug(string.format('[CommandService] Mode change requested: %s -> %s',
+          tostring(self.state.options.mode), tostring(n)))
       end
 
       self.state.options.mode = n
@@ -50,11 +66,17 @@ function CommandService.new(mq, state, logger, engine)
     end,
 
     pause = function()
+      if self.logger and self.logger.Debug then
+        self.logger:Debug('[CommandService] Pausing plugin')
+      end
       self.state.app.isPaused = true
       self.logger:Info('Plugin paused')
     end,
 
     resume = function()
+      if self.logger and self.logger.Debug then
+        self.logger:Debug('[CommandService] Resuming plugin')
+      end
       self.state.app.isPaused = false
       self.logger:Info('Plugin resumed')
     end,
@@ -64,9 +86,17 @@ function CommandService.new(mq, state, logger, engine)
 end
 
 function CommandService:Register()
+  if self.logger and self.logger.Debug then
+    self.logger:Debug('[CommandService] Registering /asyst command')
+  end
+
   self.mq.bind('/asyst', function(...)
     local args = { ... } -- arg1, arg2, arg3...
     local sub = string.lower(tostring(args[1] or ''))
+
+    if self.logger and self.logger.Debug then
+      self.logger:Debug(string.format('[CommandService] Command received: /asyst %s', sub))
+    end
 
     if sub == '' then
       self:PrintHelp()
@@ -78,6 +108,10 @@ function CommandService:Register()
       self.logger:Warn('Unknown command: ' .. sub)
       self:PrintHelp()
       return
+    end
+
+    if self.logger and self.logger.Debug then
+      self.logger:Debug(string.format('[CommandService] Executing handler for: %s', sub))
     end
 
     handler(args)
