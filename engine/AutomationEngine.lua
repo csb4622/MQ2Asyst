@@ -1,4 +1,9 @@
 local Modes = require('asyst.constants.Modes')
+local GuardSeverity = require('asyst.constants.GuardSeverity')
+local GuardReason = require('asyst.constants.GuardReason')
+local GuardReasonLabels = require('asyst.constants.GuardReasonLabels')
+
+local SafetyService = require('asyst.services.SafetyService')
 
 local ManualBehavior = require('asyst.engine.behaviors.ManualBehavior')
 local ChaseBehavior  = require('asyst.engine.behaviors.ChaseBehavior')
@@ -19,6 +24,9 @@ function AutomationEngine.new(mq, state, logger)
     [Modes.Chase]  = ChaseBehavior.new(mq, state, logger),
     [Modes.Camp]   = CampBehavior.new(mq, state, logger),
   }
+
+  self.safety = SafetyService.new(mq)
+  self._isPausedBySafety = false
 
   self._activeMode = nil
 
@@ -102,10 +110,30 @@ function AutomationEngine:Tick()
   local dt = now - self._lastTickClock
   self._lastTickClock = now
 
-  -- Desired mode from UI / commands
+  local safety = self.safety:Check()
+  if not safety.ok then
+    if not self._isPausedBySafety then
+      self:EmergencyStopAll()
+    end
+    self._isPausedBySafety = true
+
+    if safety.reason and self.safety:ShouldLog(safety.reason) then
+      self.logger:Warn('Safety: ' .. safety.reason)
+    end
+
+    if safety.severity == 'Stop' then
+      self.state.options.mode = Modes.Manual
+      self._pendingMode = nil
+      self:_applyMode(Modes.Manual)
+    end
+
+    return
+  end
+
+  self._isPausedBySafety = false
+
   local desired = self.state.options.mode
 
-  -- Clamp invalid desired so we don't spam requests forever
   if desired ~= nil and self.behaviors[desired] == nil then
     if self._lastInvalidMode ~= desired then
       self.logger:Warn('Invalid mode ' .. tostring(desired) .. '; reverting to Manual')
@@ -117,14 +145,12 @@ function AutomationEngine:Tick()
     self._lastInvalidMode = nil
   end
 
-  -- Request mode changes (coalesced)
   if desired ~= nil then
     if desired ~= self._activeMode and desired ~= self._pendingMode then
       self:RequestMode(desired)
     end
   end
 
-  -- Apply pending mode after debounce
   if self._pendingMode ~= nil then
     local elapsed = now - self._modeChangeRequestedAt
     if elapsed >= self._modeDebounceSeconds then
@@ -134,19 +160,50 @@ function AutomationEngine:Tick()
     end
   end
 
-  -- Ensure an active mode exists (startup)
   if self._activeMode == nil then
     self:_applyMode(Modes.Manual)
   end
 
-  -- Tick active behavior
   local behavior = self.behaviors[self._activeMode]
   if not behavior then
     self:_applyMode(Modes.Manual)
     return
   end
 
+  -- Behavior-specific guards (expects GuardSeverity + GuardReason + GuardReasonLabels + _shouldLogGuard)
+  if behavior.GetGuards then
+    local guards = behavior:GetGuards()
+    if guards then
+      for _, guard in ipairs(guards) do
+        local result = guard()
+        if result and result.ok == false then
+          if not self._isPausedByGuards then
+            self:EmergencyStopAll()
+          end
+          self._isPausedByGuards = true
+
+          local reason = result.reason or GuardReason.None
+          if self:_shouldLogGuard(reason) then
+            local label = GuardReasonLabels and (GuardReasonLabels[reason] or tostring(reason)) or tostring(reason)
+            self.logger:Warn('Guard: ' .. label)
+          end
+
+          if result.severity == GuardSeverity.Stop then
+            self.state.options.mode = Modes.Manual
+            self._pendingMode = nil
+            self:_applyMode(Modes.Manual)
+          end
+
+          return
+        end
+      end
+    end
+  end
+
+  self._isPausedByGuards = false
+
   behavior:Tick(dt)
 end
+
 
 return AutomationEngine

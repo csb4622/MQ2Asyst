@@ -12,6 +12,7 @@ local AsystWindow = require('asyst.ui.AsystWindow')
 local App = {}
 App.__index = App
 
+
 function App.new(mq, ImGui)
   local self = setmetatable({}, App)
 
@@ -20,7 +21,9 @@ function App.new(mq, ImGui)
 
   self.state = State.new()
   self.logger = Logger.new('[Asyst]')
-  
+
+  self._lastGameState = nil
+
   self.commandService = CommandService.new(mq, self.state, self.logger, self.engine)
   self.characterService = CharacterService.new(mq)
   self.pluginService = PluginService.new(mq, self.logger)
@@ -58,6 +61,7 @@ function App:Initialize()
 end
 
 function App:Run()
+  
   while self.state.app.isRunning do
     self.engine:Tick()
     self.mq.delay(10)
@@ -72,14 +76,32 @@ function App:Shutdown()
 end
 
 function App:DrawUI()
-  -- Called every frame by MQ imgui callback.
-  -- If window closed, we stop the main loop.
   if not self.state.ui.isOpen then
     self.state.app.isRunning = false
     return
   end
 
+  local mq = self.mq
+
+
+  if mq.TLO.MacroQuest.GameState() == 'CHARSELECT' then
+    return
+  end
+
+  if mq.TLO.NearestSpawn('pc')() == nil then
+    return
+  end
+
+  local eq = mq.TLO.EverQuest
+  
+  if eq and eq.ScreenMode and eq.ScreenMode() == 3 then
+    return
+  end
+
   self.window:Draw(self.state.character)
 end
+
+
+
 
 return App
