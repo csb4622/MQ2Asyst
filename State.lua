@@ -1,4 +1,5 @@
 local Modes = require('asyst.constants.Modes')
+local ChaseStatus = require('asyst.constants.ChaseStatus')
 
 local State = {}
 State.__index = State
@@ -42,6 +43,23 @@ function State.new()
   self.camp = {
     x = 0, y = 0, z = 0,
     zoneId = 0,
+  }
+
+  -- Chase configuration + runtime status (written by ChaseBehavior, read by UI)
+  self.chase = {
+    chaseDistance = 25,
+
+    mainAssistName = nil,
+    mainAssistDistance = 0,
+
+    status = ChaseStatus.None,
+
+    -- "Only our nav" tracking (UI must not read Navigation.Active directly)
+    nav = {
+      active = false,
+      targetId = 0,
+      issuedAt = 0,
+    }
   }
 
   self.console = {
