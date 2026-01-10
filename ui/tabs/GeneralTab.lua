@@ -1,12 +1,13 @@
 local Modes = require('asyst.constants.Modes')
 
+local StubSection = require('asyst.ui.sections.StubSection')
+local ChaseSection = require('asyst.ui.sections.ChaseSection')
 
 local ModeItems = {
   { value = Modes.Manual, label = 'Manual' },
   { value = Modes.Chase,  label = 'Chase'  },
   { value = Modes.Camp,   label = 'Camp'   },
 }
-
 
 local GeneralTab = {}
 GeneralTab.__index = GeneralTab
@@ -16,9 +17,15 @@ function GeneralTab.new(ImGui, state, logger)
   self.ImGui = ImGui
   self.state = state
   self.logger = logger
+
+  self.sections = {
+    [Modes.Chase] = ChaseSection.new(ImGui, state, logger),
+    [Modes.Manual] = StubSection.new(ImGui, state, logger, 'Automation status: (stub)'),
+    [Modes.Camp] = StubSection.new(ImGui, state, logger, 'Automation status: (stub)'),
+  }
+
   return self
 end
-
 
 local function findModeIndex(modeValue)
   for i = 1, #ModeItems do
@@ -45,7 +52,6 @@ local function ComboIndex(ImGui, id, currentIndex, labels)
   return false, currentIndex
 end
 
-
 function GeneralTab:Draw()
   local ImGui = self.ImGui
 
@@ -57,11 +63,9 @@ function GeneralTab:Draw()
 
     ImGui.Separator()
 
-    -- Mode selector
     local opts = self.state.options
     ImGui.Text('Mode')
 
-    -- Build labels array for ImGui.Combo
     local labels = {}
     for i = 1, #ModeItems do
       labels[i] = ModeItems[i].label
@@ -73,25 +77,13 @@ function GeneralTab:Draw()
     if changed and ModeItems[newIndex] then
       local selected = ModeItems[newIndex]
       opts.mode = selected.value
-
       self.logger:Info('Mode set to: ' .. selected.label)
-
-      -- Stub hooks for later automation engine integration
-      if opts.mode == Modes.Manual then
-        -- In Manual, do nothing; user controls the character.
-        -- Later: stop any running nav/chase logic.
-        -- self.mq.cmd('/nav stop') -- (would belong in a service/engine, not UI)
-      elseif opts.mode == Modes.Chase then
-        -- In Chase, follow Group Main Assist using MQ2Nav (stub).
-        -- Later: resolve MA name from state.group.roles.mainAssist and issue /nav id <name> or /nav spawn <name>.
-      elseif opts.mode == Modes.Camp then
-        -- hold position / return to camp (stub)
-        -- Later: record camp location and use nav to return if displaced.
-      end
     end
 
-    ImGui.Separator()
-    ImGui.Text('Automation status: (stub)')
+    local section = self.sections[opts.mode] or self.sections[Modes.Manual]
+    if section and section.Draw then
+      section:Draw()
+    end
 
     ImGui.EndTabItem()
   end
