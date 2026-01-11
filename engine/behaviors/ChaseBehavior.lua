@@ -14,7 +14,6 @@ function ChaseBehavior.new(mq, state, logger)
   self._accum = 0
   self._interval = 0.25
 
-  -- Stuck detection: if we issue nav and aren't moving, mark stuck.
   self._lastX = nil
   self._lastY = nil
   self._lastZ = nil
@@ -38,17 +37,13 @@ local function Fail(severity, reason)
   return { ok = false, severity = severity, reason = reason }
 end
 
-local function clampNumber(v, minV, maxV)
-  v = tonumber(v)
-  if not v then return nil end
-  if minV ~= nil and v < minV then v = minV end
-  if maxV ~= nil and v > maxV then v = maxV end
-  return v
-end
-
-local function sqr(n) return n * n end
-local function dist3(x1, y1, z1, x2, y2, z2)
-  return math.sqrt(sqr(x1 - x2) + sqr(y1 - y2) + sqr(z1 - z2))
+local function clampNumber(val, minVal, maxVal)
+  if val == nil then return nil end
+  local n = tonumber(val)
+  if not n then return nil end
+  if minVal and n < minVal then return minVal end
+  if maxVal and n > maxVal then return maxVal end
+  return n
 end
 
 function ChaseBehavior:GetGuards()
@@ -58,6 +53,12 @@ function ChaseBehavior:GetGuards()
   return {
     function()
       local me = mq.TLO.Me
+      if not me then
+        return Fail(GuardSeverity.Stop, GuardReason.NoMe)
+      end
+      if me.Dead and me.Dead() then
+        return Fail(GuardSeverity.Stop, GuardReason.Dead)
+      end
       if me.Stunned and me.Stunned() then
         return Fail(GuardSeverity.Pause, GuardReason.Stunned)
       end
@@ -92,22 +93,41 @@ function ChaseBehavior:_writeState(status, maName, maDist)
     return
   end
 
+  chase.nav = chase.nav or { active = false, targetId = 0, issuedAt = 0 }
+
+  local eps = 0.05 -- distance noise tolerance
+  local prevStatus = chase.status
+  local prevName = chase.mainAssistName
+  local prevDist = chase.mainAssistDistance or 0
+  local nextDist = maDist or prevDist
+
+  local changed =
+    prevStatus ~= status or
+    prevName ~= maName or
+    math.abs(prevDist - nextDist) > eps or
+    chase.nav.active ~= self._navActive or
+    chase.nav.targetId ~= self._navTargetId or
+    chase.nav.issuedAt ~= self._navIssuedAt
+
+  if not changed then
+    return
+  end
+
   chase.status = status or chase.status
   chase.mainAssistName = maName
-  chase.mainAssistDistance = maDist or chase.mainAssistDistance
+  chase.mainAssistDistance = nextDist
 
-  chase.nav = chase.nav or { active = false, targetId = 0, issuedAt = 0 }
   chase.nav.active = self._navActive
   chase.nav.targetId = self._navTargetId
   chase.nav.issuedAt = self._navIssuedAt
 
   log:Debug(string.format(
     '[ChaseBehavior] State updated: status=%s maName=%s maDist=%.2f navActive=%s',
-    tostring(status), tostring(maName), maDist or 0, tostring(self._navActive)
+    tostring(chase.status), tostring(maName), nextDist or 0, tostring(self._navActive)
   ))
 end
 
-function ChaseBehavior:_resetChase()
+function ChaseBehavior:_stopNav()
   local log = self.logger
 
   if self._navActive then
@@ -118,15 +138,19 @@ function ChaseBehavior:_resetChase()
   self._navActive = false
   self._navTargetId = 0
   self._navIssuedAt = 0
+end
 
-  self:_writeState(ChaseStatus.None)
+function ChaseBehavior:_resetChase()
+  -- Full chase reset (used when entering/leaving chase, MA missing, etc.)
+  self:_stopNav()
+  self:_writeState(ChaseStatus.None, nil, 0)
 end
 
 function ChaseBehavior:Enter()
   local log = self.logger
 
   log:Debug('[ChaseBehavior] Enter() called - initializing chase behavior')
-  
+
   self._accum = 0
 
   local me = self.mq.TLO.Me
@@ -139,9 +163,6 @@ function ChaseBehavior:Enter()
       self._lastX, self._lastY, self._lastZ
     ))
   else
-    self._lastX, self._lastY, self._lastZ = nil, nil, nil
-    self._lastMovedAt = os.clock()
-
     log:Warn('[ChaseBehavior] Could not read initial position')
   end
 
@@ -151,8 +172,8 @@ end
 
 function ChaseBehavior:Tick(dt)
   local log = self.logger
+  self._accum = self._accum + (dt or 0)
 
-  self._accum = self._accum + dt
   if self._accum < self._interval then return end
   self._accum = 0
 
@@ -166,16 +187,17 @@ function ChaseBehavior:Tick(dt)
   end
 
   local chaseDistance = clampNumber(chase.chaseDistance, 5, 500) or 25
-  chase.chaseDistance = chaseDistance
+  if chase.chaseDistance ~= chaseDistance then
+    chase.chaseDistance = chaseDistance
+    log:Debug(string.format('[ChaseBehavior] Chase distance: %d', chaseDistance))
+  end  
 
-  log:Debug(string.format('[ChaseBehavior] Chase distance: %d', chaseDistance))
-
-  local maName = state.group and state.group.roles and state.group.roles.mainAssist or nil
+  local maName = state.group and state.group.roles and state.group.roles.mainAssist or nil  -- need to set this with some type of an event instead of polling it every time
   chase.mainAssistName = maName
 
   if not maName or maName == '' then
     log:Warn('[ChaseBehavior] No main assist defined, resetting chase')
-    self:_resetChase()
+    self:_stopNav()
     self:_writeState(ChaseStatus.NotFound, nil, 0)
     return
   end
@@ -184,21 +206,19 @@ function ChaseBehavior:Tick(dt)
   local maSpawn = mq.TLO.Spawn('pc ' .. maName)
   local maId = (maSpawn and maSpawn.ID and maSpawn.ID()) or 0
   if maId == 0 then
-    log:Debug(string.format('[ChaseBehavior] Main assist %s not found', maName))
-    self:_resetChase()
+    log:Warn(string.format('[ChaseBehavior] Main assist %s not found', maName))
+    self:_stopNav()
     self:_writeState(ChaseStatus.NotFound, maName, 0)
     return
   end
 
   local dist = (maSpawn.Distance and maSpawn.Distance()) or 0
   chase.mainAssistDistance = dist
-
-  log:Debug(string.format('[ChaseBehavior] Main assist %s found: ID=%d dist=%.2f', maName, maId, dist))
-
+  
   -- Close enough: stop our nav.
   if dist <= chaseDistance then
     log:Debug(string.format('[ChaseBehavior] At target: dist=%.2f <= chaseDistance=%d', dist, chaseDistance))
-    self:_resetChase()
+    self:_stopNav()
     self:_writeState(ChaseStatus.AtTarget, maName, dist)
     return
   end
@@ -206,7 +226,7 @@ function ChaseBehavior:Tick(dt)
   -- Can't nav without a mesh.
   if not (mq.TLO.Navigation and mq.TLO.Navigation.MeshLoaded and mq.TLO.Navigation.MeshLoaded()) then
     log:Error('[ChaseBehavior] Navigation mesh not loaded, cannot chase')
-    self:_resetChase()
+    self:_stopNav()
     self:_writeState(ChaseStatus.NotFound, maName, dist)
     return
   end
@@ -239,33 +259,28 @@ function ChaseBehavior:Tick(dt)
     if me and me.X and me.Y and me.Z then
       local x, y, z = me.X(), me.Y(), me.Z()
 
-      if self._lastX == nil then
-        self._lastX, self._lastY, self._lastZ = x, y, z
-        self._lastMovedAt = os.clock()
+      if self._lastX and self._lastY and self._lastZ then
+        local dx = x - self._lastX
+        local dy = y - self._lastY
+        local dz = z - self._lastZ
+        local moved = math.sqrt(dx * dx + dy * dy + dz * dz)
 
-        log:Debug(string.format(
-          '[ChaseBehavior] Stuck detection initialized: x=%.2f y=%.2f z=%.2f',
-          x, y, z
-        ))
-      else
-        local moved = dist3(x, y, z, self._lastX, self._lastY, self._lastZ)
         if moved >= self._minMoveDistance then
-          self._lastX, self._lastY, self._lastZ = x, y, z
           self._lastMovedAt = os.clock()
-          log:Debug(string.format('[ChaseBehavior] Movement detected: moved=%.2f', moved))
+          self._lastX, self._lastY, self._lastZ = x, y, z
         else
-          local stuckTime = os.clock() - (self._lastMovedAt or 0)
-          if stuckTime >= self._stuckSeconds then
-            log:Debug(string.format(
-              '[ChaseBehavior] Stuck detected: stuckTime=%.2f >= %.2f seconds, stopping nav',
-              stuckTime, self._stuckSeconds
-            ))
-
-            mq.cmd('/nav stop')
-            self._navActive = false
-            self:_writeState(ChaseStatus.Stuck, maName, dist)
+          local stuckFor = os.clock() - (self._lastMovedAt or os.clock())
+          if stuckFor >= self._stuckSeconds then
+            log:Warn(string.format('[ChaseBehavior] Detected stuck (%.2fs). Reissuing nav.', stuckFor))
+            -- Reissue nav
+            self._navIssuedAt = os.clock()
+            mq.cmd(('/nav id %d distance=%d log=off tag=asyst_chase'):format(maId, chaseDistance))
+            self._lastMovedAt = os.clock()
           end
         end
+      else
+        self._lastX, self._lastY, self._lastZ = x, y, z
+        self._lastMovedAt = os.clock()
       end
     end
   end
@@ -273,7 +288,7 @@ end
 
 function ChaseBehavior:Exit()
   local log = self.logger
-  
+
   log:Debug('[ChaseBehavior] Exit() called - exiting chase behavior')
   self:_resetChase()
 end
