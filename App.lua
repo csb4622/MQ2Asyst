@@ -25,10 +25,6 @@ function App.new(mq, ImGui)
   local charName = (mq.TLO.Me.Name and mq.TLO.Me.Name()) or 'Unknown'  
   local logDir = mq.luaDir .. '/asyst/logs'
   local logFile = logDir .. '/asyst_' .. charName .. '.log'
-
-  -- Create directory if it doesn't exist (Windows-specific)
-  os.execute('mkdir "' .. logDir .. '" 2>$nul') 
-
   self.logger = Logger.new('[Asyst]', logFile)
 
   self._lastGameState = nil
