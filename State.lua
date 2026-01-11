@@ -1,5 +1,6 @@
 local Modes = require('asyst.constants.Modes')
 local ChaseStatus = require('asyst.constants.ChaseStatus')
+local CampStatus = require('asyst.constants.CampStatus')
 
 local State = {}
 State.__index = State
@@ -29,6 +30,9 @@ function State.new()
     assistEnabled = false,
 
     mode = Modes.Manual,
+
+    -- Character options
+    assistAtPercent = 98,
   }
 
   self.group = {
@@ -44,6 +48,14 @@ function State.new()
   self.camp = {
     x = 0, y = 0, z = 0,
     zoneId = 0,
+
+    -- Camp configuration
+    campRadius = 40,
+    restRadius = 10,
+    returnToExactSpot = false,
+
+    -- Camp runtime status (written by CampBehavior, read by UI)
+    status = CampStatus.Resting,
   }
 
   -- Chase configuration + runtime status (written by ChaseBehavior, read by UI)

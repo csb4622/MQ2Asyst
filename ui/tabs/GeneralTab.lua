@@ -2,6 +2,7 @@ local Modes = require('asyst.constants.Modes')
 
 local StubSection = require('asyst.ui.sections.StubSection')
 local ChaseSection = require('asyst.ui.sections.ChaseSection')
+local CampSection = require('asyst.ui.sections.CampSection')
 
 local ModeItems = {
   { value = Modes.Manual, label = 'Manual' },
@@ -22,7 +23,7 @@ function GeneralTab.new(ImGui, state, logger)
   self.sections = {
     [Modes.Chase] = ChaseSection.new(ImGui, state, logger),
     [Modes.Manual] = StubSection.new(ImGui, state, logger, 'Automation status: (stub)'),
-    [Modes.Camp] = StubSection.new(ImGui, state, logger, 'Automation status: (stub)'),
+    [Modes.Camp] = CampSection.new(ImGui, state, logger),
   }
 
   return self
