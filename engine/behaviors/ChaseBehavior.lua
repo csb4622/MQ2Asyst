@@ -33,6 +33,15 @@ function ChaseBehavior.new(mq, state, logger)
   self._navReissueCooldownMs = 1000
   self._lastNavReissueAtMs = 0
 
+  -- Debounce "not active" before reissuing to avoid thrash during brief nav recalcs.
+  self._navNotActiveSinceMs = 0
+  self._navNotActiveDebounceMs = 800 -- must be continuously not-active this long
+  self._navReissueVelocityMax = 0.15 -- only reissue if essentially not moving
+
+  -- Hysteresis to prevent stop/start thrash at the chase distance boundary.
+  -- Enter AtTarget at dist <= chaseDistance; leave AtTarget only when dist >= chaseDistance + hysteresis.
+  self._atTargetHysteresis = 5.0
+
   -- Rate-limited nav-state debug while moving.
   self._lastNavStateLogAtMs = 0
   self._navStateLogIntervalMs = 1000
@@ -86,11 +95,9 @@ function ChaseBehavior:_navMember(name)
   local m = nav[name]
   if m == nil then return nil end
 
-  -- First attempt: call it (works for functions and callable userdata).
   local ok, val = pcall(m)
   if ok then return val end
 
-  -- Fallback: treat as value (rarely useful for TLOs, but harmless).
   return m
 end
 
@@ -198,6 +205,7 @@ function ChaseBehavior:_stopNav()
   self._navActive = false
   self._navTargetId = 0
   self._navIssuedAtMs = 0
+  self._navNotActiveSinceMs = 0
 end
 
 function ChaseBehavior:_issueNav(targetId, chaseDistance, reason)
@@ -213,6 +221,9 @@ function ChaseBehavior:_issueNav(targetId, chaseDistance, reason)
   self._navActive = true
   self._navTargetId = targetId
   self._navIssuedAtMs = self:_nowMs()
+
+  -- Reset debounce tracking on each issuance.
+  self._navNotActiveSinceMs = 0
 
   mq.cmd(('/nav id %d distance=%d log=off tag=asyst_chase'):format(targetId, chaseDistance))
 end
@@ -246,31 +257,59 @@ function ChaseBehavior:_logNavStateIfNeeded()
   ))
 end
 
--- Ensure nav actually starts; if Active is false OR unreadable for too long, reissue with cooldown.
+-- Ensure nav actually starts; if Active is false/unknown for long enough, reissue with cooldown.
+-- Debounced to avoid reissue churn when Active briefly flips false during recalculation.
 function ChaseBehavior:_ensureNavRunning(facts)
   if not self._navActive or self._navTargetId == 0 then return end
 
   local nowMs = self:_nowMs()
 
+  -- Give /nav some time to start.
   if self._navIssuedAtMs > 0 and (nowMs - self._navIssuedAtMs) < self._navStartTimeoutMs then
     return
   end
 
   local activeMq = self:_navActiveMq()
   local pausedMq = self:_navPausedMq()
+  local vel = self:_navVelocityMq() or 0
 
-  -- If MQ says it's active, done.
-  if activeMq == true then return end
+  -- If MQ says it's active, reset debounce tracking and we're done.
+  if activeMq == true then
+    self._navNotActiveSinceMs = 0
+    return
+  end
 
-  -- If paused, don’t thrash.
-  if pausedMq == true then return end
+  -- If paused, don't thrash; also reset debounce so we don't immediately reissue after pause clears.
+  if pausedMq == true then
+    self._navNotActiveSinceMs = 0
+    return
+  end
+
+  -- Only reissue if we're essentially not moving (prevents reissue while running).
+  if vel > self._navReissueVelocityMax then
+    self._navNotActiveSinceMs = 0
+    return
+  end
+
+  -- Start / continue debounce window for "not active/unknown".
+  if self._navNotActiveSinceMs == 0 then
+    self._navNotActiveSinceMs = nowMs
+    return
+  end
+
+  if (nowMs - self._navNotActiveSinceMs) < self._navNotActiveDebounceMs then
+    return
+  end
 
   if self._lastNavReissueAtMs > 0 and (nowMs - self._lastNavReissueAtMs) < self._navReissueCooldownMs then
     return
   end
 
   self._lastNavReissueAtMs = nowMs
-  self:_issueNav(self._navTargetId, facts.chaseDistance, (activeMq == nil) and 'reissue_active_unknown' or 'reissue_not_active')
+  self._navNotActiveSinceMs = 0
+
+  local reason = (activeMq == nil) and 'reissue_active_unknown_debounced' or 'reissue_not_active_debounced'
+  self:_issueNav(self._navTargetId, facts.chaseDistance, reason)
 end
 
 function ChaseBehavior:_checkStuckWhileMoving()
@@ -452,17 +491,36 @@ function ChaseBehavior:Tick(dt)
   self:_writeTelemetry(facts.maName, facts.dist)
 
   local nextState
-  if facts.dist <= facts.chaseDistance then
-    nextState = ChaseStatus.AtTarget
-  else
-    if not facts.meshLoaded then
-      log:Error('[ChaseBehavior] Navigation mesh not loaded, cannot chase')
-      nextState = ChaseStatus.NotFound
+
+  -- Hysteresis for AtTarget:
+  -- If currently AtTarget, only leave it once we're beyond chaseDistance + hysteresis.
+  if self._fsmState == ChaseStatus.AtTarget then
+    local leaveDist = facts.chaseDistance + (self._atTargetHysteresis or 0)
+    if facts.dist <= leaveDist then
+      nextState = ChaseStatus.AtTarget
     else
-      if self._fsmState == ChaseStatus.Moving and self:_checkStuckWhileMoving() then
-        nextState = ChaseStatus.Stuck
+      -- beyond hysteresis band: move again if possible
+      if not facts.meshLoaded then
+        log:Error('[ChaseBehavior] Navigation mesh not loaded, cannot chase')
+        nextState = ChaseStatus.NotFound
       else
         nextState = ChaseStatus.Moving
+      end
+    end
+  else
+    -- Normal entry condition into AtTarget
+    if facts.dist <= facts.chaseDistance then
+      nextState = ChaseStatus.AtTarget
+    else
+      if not facts.meshLoaded then
+        log:Error('[ChaseBehavior] Navigation mesh not loaded, cannot chase')
+        nextState = ChaseStatus.NotFound
+      else
+        if self._fsmState == ChaseStatus.Moving and self:_checkStuckWhileMoving() then
+          nextState = ChaseStatus.Stuck
+        else
+          nextState = ChaseStatus.Moving
+        end
       end
     end
   end
