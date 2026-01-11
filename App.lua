@@ -20,7 +20,10 @@ function App.new(mq, ImGui)
   self.ImGui = ImGui
 
   self.state = State.new()
-  self.logger = Logger.new('[Asyst]', mq.luaDir .. '/asyst.log')
+
+  -- Get character name for per-character log file
+  local charName = (mq.TLO.Me.Name and mq.TLO.Me.Name()) or 'Unknown'
+  self.logger = Logger.new('[Asyst]', mq.luaDir .. '/asyst_' .. charName .. '.log')
 
   self._lastGameState = nil
 
